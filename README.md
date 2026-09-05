@@ -1,18 +1,32 @@
-# evt2sse
+<p align="center">
+  <img src="assets/logo.svg" alt="evt2sse — Notifications PostgreSQL NOTIFY/LISTEN vers SSE" width="480">
+</p>
 
+# evt2sse
 
 Relais qui expose les notifications **PostgreSQL `NOTIFY`/`LISTEN`** derrière une façade **Server-Sent Events (SSE)**, avec une petite IHM de suivi.
 
-
 ![Aperçu animé de la présentation](assets/evt2sse.gif)
 
+## Fonctionnalités
 
+- **`NOTIFY`/`LISTEN` → SSE** : une connexion dédiée en `LISTEN`, un flux `text/event-stream` multi-client avec horodatage et `id` incrémental.
+- **Multi-canaux dynamiques** : abonnement/désabonnement à chaud (`POST`/`DELETE /api/channels`), une connexion `LISTEN` par canal avec reconnexion automatique individuelle ; tous les clients reçoivent tous les événements, taggués par leur canal d'origine.
+- **Résilience** :
+  - reconnexion PostgreSQL auto : backoff exponentiel ± 20 %, plafonné à 30 s, démarrage tolérant à une base indisponible ;
+  - reprise **Last-Event-ID** après coupure (tampon des 256 derniers événements) ;
+  - envoi **idempotent** : `id` dédupliqué 5 min côté relais ;
+  - **heartbeat SSE** (15 s) : évite les timeouts de proxy et détecte les clientes coupées.
+- **Prêt pour Kubernetes** : endpoints d'ops `/ops/liveness`, `/ops/readiness` (lié à l'état de la base) et `/ops/info` (version, commit, build), image **distroless non-root** multi-arch (amd64/arm64).
+- **IHM embarquée** (`/`) via `go:embed` : connexion au flux, envoi de messages de test, filtrage par canal.
+- **Client Go réutilisable** (`pkg/client`) et **simulateur** (`cmd/simulator`).
+- **Déploiement** : `Dockerfile` multi-stage, `docker-compose.yaml` (db + app), **chart Helm** `k8s/helm/evt2sse`, intégration CI-friendly via `Makefile`.
 
 ## Architecture
 
 ```
 PostgreSQL ──(LISTEN)──> serveur evt2sse ──(SSE)──> clients navigateur
-    ▲                                                    ▲
+    ▲                                                     ▲
     └────────(pg_notify)─────────  POST /api/send ────────┘
 ```
 
@@ -24,13 +38,26 @@ PostgreSQL ──(LISTEN)──> serveur evt2sse ──(SSE)──> clients navi
 ## Structure
 
 ```
-cmd/evt2sse/main.go     point d'entrée (flags, connexion, arrêt propre)
-cmd/simulator/          simulateur de test : émet et affiche les événements
-internal/relay/         relais PostgreSQL LISTEN/NOTIFY (connexion dédiée + pool + reconnexion)
-internal/server/        routes HTTP (/api/send, /api/listen, /api/status) et diffusion SSE
-internal/web/           IHM embarquée via go:embed (index.html)
-pkg/client/             client Go réutilisable (écoute SSE, envoi, statut)
+.
+├── assets/       média du README (gif de présentation)
+├── cmd/          binaires Go : l'application et son simulateur
+├── internal/     code métier non réutilisable à l'extérieur du module
+├── k8s/          déploiement Kubernetes : chart Helm de l'application
+├── motion/       présentation Motion Canvas (rendu mp4/gif)
+└── pkg/          bibliothèque Go réutilisable (client evt2sse)
 ```
+
+| Répertoire | Contenu |
+|------------|---------|
+| `cmd/evt2sse/` | Point d'entrée : flags (`-addr`, `-db`, `-channel`), démarrage avec retry, arrêt propre sur signal |
+| `cmd/simulator/` | Simulateur de test : écoute le flux SSE, affiche les événements, en émet d'éventuels simulés |
+| `internal/relay/` | Relais `LISTEN`/`NOTIFY` : connexion dédiée + pool séparé, reconnexion backoff, multi-canaux, dédup |
+| `internal/server/` | Routage HTTP (`/api/*`, `/ops/*`) et diffusion SSE : client map, heartbeat, historique + reprise |
+| `internal/web/` | IHM embarquée via `go:embed` (`index.html`) |
+| `internal/buildinfo/` | Métadonnées de build (version, commit, date) exposées par `/ops/info` |
+| `pkg/client/` | Client Go réutilisable : `Listen` (auto-reconnect), `Send`, `Status`, `Subscribe`/`Unsubscribe`, `Channels` |
+| `k8s/helm/evt2sse/` | Chart Helm (Deployment, Service, Secret, probes, ingress/HPA/PDB optionnels) — voir `k8s/helm/README.md` |
+| `motion/` | Présentation animée Motion Canvas (6 scènes, `scripts/export.mjs` pour le rendu headless) |
 
 ## Lancer en local
 
@@ -44,6 +71,13 @@ curl -X POST http://localhost:8080/api/send \
 ```
 
 Ouvrir http://localhost:8080 pour l'IHM.
+
+Sans Docker, avec une base PostgreSQL locale (`make db-up` pour la démarrer) :
+
+```bash
+make run        # compile et lance avec pgurl par défaut
+go run ./cmd/simulator   # émettre et afficher des événements (1 envoi / 2 s)
+```
 
 ## Options
 
@@ -59,13 +93,16 @@ Ouvrir http://localhost:8080 pour l'IHM.
 
 | Route | Méthode | Description |
 |-------|---------|-------------|
-| `/api/send` | `POST` | Publie un message. Body `{"channel":"canal","payload":"..."}`. Émet un `pg_notify`. |
-| `/api/listen` | `GET` | Flux SSE. Événements `ready` (connexion) et `message`. |
-| `/api/channels` | `GET` | Liste des canaux écoutés : `{"default":"evt2sse","channels":["evt2sse"]}`. |
-| `/api/channels` | `POST` | S'abonner à un canal : body `{"channel":"notif_jobs"}` (LISTEN). |
-| `/api/channels/{name}` | `DELETE` | Se désabonner d'un canal (ferme son LISTEN). |
-| `/api/status` | `GET` | JSON : canal, nb clients, dernier id, état de la base. |
-| `/` | `GET` | IHM de suivi. |
+| `/ops/liveness` | `GET` | Le processus répond (`{"status":"alive"}`) — probe de liveness |
+| `/ops/readiness` | `GET` | Prêt seulement si la base répond, sinon `503` — probe de readiness |
+| `/ops/info` | `GET` | Version, commit, date, runtime Go (ldflags du Makefile) |
+| `/api/send` | `POST` | Publie un message. Body `{"channel":"canal","payload":"...","id":"..."}`. Émet un `pg_notify` |
+| `/api/listen` | `GET` | Flux SSE. Événements `ready` (connexion), `message`, et `resume` (reprise) |
+| `/api/channels` | `GET` | Liste des canaux écoutés : `{"default":"evt2sse","channels":["evt2sse"]}` |
+| `/api/channels` | `POST` | S'abonner à un canal : body `{"channel":"notif_jobs"}` (LISTEN) |
+| `/api/channels/{name}` | `DELETE` | Se désabonner d'un canal (ferme son LISTEN) |
+| `/api/status` | `GET` | JSON : canal, clients, dernier id, état de la base |
+| `/` | `GET` | IHM de suivi |
 
 **Multi-canaux** : le serveur écoute dynamiquement plusieurs canaux (une
 connexion LISTEN par canal, avec reconnexion automatique individuelle). Tous
@@ -79,6 +116,36 @@ Exemple de payload SSE reçu :
 event: message
 data: {"id":12,"channel":"evt2sse","payload":"{\"bonjour\":\"monde\"}","time":"2026-09-05T09:45:13.279361472Z"}
 ```
+
+## Déploiement
+
+### Image conteneur
+
+`Dockerfile` multi-stage (build golang → distroless **non-root**).
+Construite et publiée via le Makefile (multi-arch amd64/arm64) :
+
+```bash
+make image                 # image locale
+make image-multi           # multi-arch (builder buildx)
+make image-push VERSION=0.1.0   # pousse ghcr.io/laurentpoirierfr/evt2sse
+```
+
+### Docker Compose
+
+`docker compose up -d --build` démarre la base PostgreSQL et l'application.
+
+### Kubernetes (Helm)
+
+Chart Helm dans `k8s/helm/evt2sse` : deployment de **l'application seule**
+(PostgreSQL attendu à l'extérieur du chart), probes `/ops/*`, secrets
+`PGURL`, ingress/HPA/PDB/NetworkPolicy optionnels.
+
+```bash
+helm upgrade --install evt2sse ./k8s/helm/evt2sse \
+  --set postgresUrl='postgres://evt2sse:motdepasse@db-postgres:5432/evt2sse?sslmode=require'
+```
+
+→ Documentation complète du chart : [`k8s/helm/README.md`](k8s/helm/README.md).
 
 ## Client Go (pkg/client)
 
@@ -135,4 +202,4 @@ avec `{{n}}` = compteur, `{{ts}}` = horodatage), `-interval`, `-count`,
 ## Notes
 
 - Utilisable aussi depuis n'importe quel client Postgres : tout `NOTIFY canal, '...'` fait sur la base est relayé aux clients SSE connectés.
-- Le serveur se reconnecte automatiquement à Postgres (3 s de pause) en cas de coupure.
+- Le serveur se reconnecte automatiquement à Postgres (backoff exponentiel ± 20 %, plafonné à 30 s) en cas de coupure, et supporte la reprise des événements manqués via `Last-Event-ID`.

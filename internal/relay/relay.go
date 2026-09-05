@@ -141,6 +141,20 @@ func (r *Relay) Connected() bool {
 	return !r.closed && r.pool != nil
 }
 
+// Healthy vérifie que la connexion à PostgreSQL répond réellement (ping), avec
+// un délai borné. Utilisé par la route /ops/readiness.
+func (r *Relay) Healthy(ctx context.Context) bool {
+	r.mu.Lock()
+	pool := r.pool
+	r.mu.Unlock()
+	if pool == nil {
+		return false
+	}
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return pool.Ping(pingCtx) == nil
+}
+
 func (r *Relay) Close() error {
 	r.mu.Lock()
 	r.closed = true

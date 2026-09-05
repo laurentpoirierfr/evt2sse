@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/laurentpoirierfr/evt2sse/internal/buildinfo"
 	"github.com/laurentpoirierfr/evt2sse/internal/relay"
 	"github.com/laurentpoirierfr/evt2sse/internal/web"
 )
@@ -80,6 +81,9 @@ func (s *Server) Start(ctx context.Context) {
 // Handler construit le routeur HTTP (avec lecture de panique).
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /ops/liveness", s.handleLiveness)
+	mux.HandleFunc("GET /ops/readiness", s.handleReadiness)
+	mux.HandleFunc("GET /ops/info", s.handleInfo)
 	mux.HandleFunc("POST /api/send", s.handleSend)
 	mux.HandleFunc("GET /api/listen", s.handleListen)
 	mux.HandleFunc("GET /api/status", s.handleStatus)
@@ -88,6 +92,30 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/channels/{name}", s.handleUnsubscribe)
 	mux.HandleFunc("GET /", s.handleIndex)
 	return s.recoverPanic(mux)
+}
+
+// handleLiveness : le processus est vivant dès que l'endpoint répond (200).
+func (s *Server) handleLiveness(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"status": "alive"})
+}
+
+// handleReadiness : prêt à servir uniquement si la connexion à la base
+// répond (dépendance indispensable au fonctionnement). Sinon 503.
+func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
+	ready := s.relay != nil && s.relay.Healthy(r.Context())
+	if !ready {
+		http.Error(w, `{"status":"not_ready"}`, http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"status": "ready"})
+}
+
+// handleInfo expose les métadonnées de build/version de l'application.
+func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(buildinfo.Info())
 }
 
 // recoverPanic protège le serveur contre une panique dans un handler.

@@ -136,3 +136,45 @@ func TestParseLastEventID(t *testing.T) {
 		}
 	}
 }
+
+func TestOpsEndpoints(t *testing.T) {
+	// Relais non démarré, non connecté : readiness doit répondre 503.
+	r := relay.New("postgres://u:p@h/db?sslmode=disable", "evt2sse")
+	srv := New(r, "evt2sse")
+	s := httptest.NewServer(srv.Handler())
+	defer s.Close()
+
+	// Liveness : toujours la même réponse et 200.
+	resp, err := http.Get(s.URL + "/ops/liveness")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("liveness: statut %d attendu 200", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Readiness : pas connecté -> 503.
+	resp, err = http.Get(s.URL + "/ops/readiness")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("readiness: statut %d attendu 503", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// Info : métadonnées de build exposées.
+	resp, err = http.Get(s.URL + "/ops/info")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var info map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		t.Fatal(err)
+	}
+	if info["name"] != "evt2sse" {
+		t.Fatalf("info: name=%q attendu evt2sse", info["name"])
+	}
+}

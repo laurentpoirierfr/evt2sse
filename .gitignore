@@ -2,6 +2,7 @@
 evt2sse
 rescheck
 simulator
+integtest
 
 # Ignore log files
 *.log

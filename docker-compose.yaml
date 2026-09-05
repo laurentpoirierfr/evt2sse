@@ -15,7 +15,12 @@ services:
       retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
+        COMMIT: ${COMMIT:-n/a}
+        BUILD_DATE: ${BUILD_DATE:-}
     container_name: evt2sse-app
     depends_on:
       db:

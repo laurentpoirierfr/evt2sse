@@ -1,12 +1,14 @@
-<p align="center">
-  <img src="assets/logo.svg" alt="evt2sse — Notifications PostgreSQL NOTIFY/LISTEN vers SSE" width="480">
-</p>
 
 # evt2sse
 
 Relais qui expose les notifications **PostgreSQL `NOTIFY`/`LISTEN`** derrière une façade **Server-Sent Events (SSE)**, avec une petite IHM de suivi.
 
-![Aperçu animé de la présentation](assets/evt2sse.gif)
+<p align="center">
+  <img src="assets/logo.svg" alt="evt2sse — Notifications PostgreSQL NOTIFY/LISTEN vers SSE" width="480">
+</p>
+
+
+[Aperçu animé de la présentation](assets/evt2sse.gif)
 
 ## Fonctionnalités
 

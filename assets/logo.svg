@@ -1,236 +1,76 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg
-   width="640"
-   height="200"
-   viewBox="0 0 640 200"
-   role="img"
-   aria-labelledby="title desc"
-   version="1.1"
-   id="svg64"
-   sodipodi:docname="logo.svg"
-   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
-   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <sodipodi:namedview
-     id="namedview66"
-     pagecolor="#ffffff"
-     bordercolor="#000000"
-     borderopacity="0.25"
-     inkscape:showpageshadow="2"
-     inkscape:pageopacity="0.0"
-     inkscape:pagecheckerboard="0"
-     inkscape:deskcolor="#d1d1d1"
-     showgrid="false"
-     inkscape:zoom="1.18"
-     inkscape:cx="320.33898"
-     inkscape:cy="100"
-     inkscape:window-width="1680"
-     inkscape:window-height="984"
-     inkscape:window-x="0"
-     inkscape:window-y="0"
-     inkscape:window-maximized="1"
-     inkscape:current-layer="svg64" />
-  <title
-     id="title">evt2sse — Notifications PostgreSQL NOTIFY/LISTEN vers SSE</title>
-  <desc
-     id="desc">Logo evt2sse : base de données PostgreSQL reliée par une flèche à un badge SSE, wordmark &quot;evt2sse&quot; et description du projet.</desc>
-  <defs
-     id="defs18">
-    <linearGradient
-       id="badgeGrad"
-       x1="16.793932"
-       y1="19.233138"
-       x2="180.78174"
-       y2="183.22094"
-       gradientTransform="scale(1.0122704,0.98787834)"
-       gradientUnits="userSpaceOnUse">
-      <stop
-         offset="0"
-         stop-color="#0B1220"
-         id="stop4" />
-      <stop
-         offset="1"
-         stop-color="#131E33"
-         id="stop6" />
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="200" viewBox="0 0 640 200" role="img" aria-labelledby="title desc">
+  <title id="title">evt2sse — Notifications PostgreSQL NOTIFY/LISTEN vers SSE</title>
+  <desc id="desc">Logo evt2sse : base de données PostgreSQL reliée par une flèche à un badge SSE, wordmark "evt2sse" orange et description du projet.</desc>
+
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#04070D"/>
     </linearGradient>
-    <linearGradient
-       id="dbGrad"
-       x1="0"
-       y1="0"
-       x2="0"
-       y2="1">
-      <stop
-         offset="0"
-         stop-color="#12203A"
-         id="stop9" />
-      <stop
-         offset="1"
-         stop-color="#0E1830"
-         id="stop11" />
+    <linearGradient id="badgeGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#141E33"/>
+      <stop offset="1" stop-color="#0C1426"/>
     </linearGradient>
-    <filter
-       id="shadow"
-       x="-0.006097561"
-       y="-0.00625"
-       width="1.0121951"
-       height="1.0125">
-      <feDropShadow
-         dx="0"
-         dy="6"
-         stdDeviation="10"
-         flood-color="#000000"
-         flood-opacity="0.35" />
+    <linearGradient id="dbGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#12203A"/>
+      <stop offset="1" stop-color="#0E1830"/>
+    </linearGradient>
+    <radialGradient id="glowCyan">
+      <stop offset="0" stop-color="#38BDF8" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowOrange">
+      <stop offset="0" stop-color="#F59E0B" stop-opacity="0.40"/>
+      <stop offset="1" stop-color="#F59E0B" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000000" flood-opacity="0.45"/>
     </filter>
-    <clipPath
-       id="dbClip">
-      <path
-         d="M36 66 v30 a30 10 0 0 0 60 0 v-30 Z"
-         id="path15" />
+    <clipPath id="dbClip">
+      <path d="M36 66 v30 a30 10 0 0 0 60 0 v-30 Z"/>
     </clipPath>
   </defs>
+
+  <!-- Fond sombre moderne -->
+  <rect x="0" y="0" width="640" height="200" rx="32" fill="url(#bgGrad)"/>
+  <circle cx="70" cy="30" r="190" fill="url(#glowCyan)"/>
+  <circle cx="575" cy="205" r="220" fill="url(#glowOrange)"/>
+
   <!-- Badge -->
-  <g
-     filter="url(#shadow)"
-     id="g22"
-     transform="matrix(1.1576353,0,0,0.99905716,-2.7620083,0.09428411)">
-    <rect
-       x="18"
-       y="20"
-       width="164"
-       height="160"
-       rx="36"
-       fill="url(#badgeGrad)"
-       stroke="#1f2a44"
-       stroke-width="2"
-       id="rect20"
-       style="fill:url(#badgeGrad)" />
+  <g filter="url(#shadow)">
+    <rect x="18" y="20" width="164" height="160" rx="36" fill="url(#badgeGrad)" stroke="#2A3A5C" stroke-width="2"/>
   </g>
+
   <!-- Base PostgreSQL (NOTIFY/LISTEN) -->
-  <ellipse
-     cx="66"
-     cy="96"
-     rx="30"
-     ry="10"
-     fill="#1F2A44"
-     id="ellipse24" />
-  <path
-     d="M36 66 v30 a30 10 0 0 0 60 0 v-30 Z"
-     fill="url(#dbGrad)"
-     stroke="#24324F"
-     stroke-width="1"
-     id="path26" />
-  <g
-     clip-path="url(#dbClip)"
-     id="g34">
-    <path
-       d="M42 73 H90"
-       stroke="#2C3E62"
-       stroke-width="2"
-       stroke-linecap="round"
-       id="path28" />
-    <path
-       d="M42 80 H90"
-       stroke="#2C3E62"
-       stroke-width="2"
-       stroke-linecap="round"
-       id="path30" />
-    <path
-       d="M42 87 H90"
-       stroke="#2C3E62"
-       stroke-width="2"
-       stroke-linecap="round"
-       id="path32" />
+  <ellipse cx="66" cy="96" rx="30" ry="10" fill="#1F2A44"/>
+  <path d="M36 66 v30 a30 10 0 0 0 60 0 v-30 Z" fill="url(#dbGrad)" stroke="#24324F" stroke-width="1"/>
+  <g clip-path="url(#dbClip)">
+    <path d="M42 73 H90" stroke="#2C3E62" stroke-width="2" stroke-linecap="round"/>
+    <path d="M42 80 H90" stroke="#2C3E62" stroke-width="2" stroke-linecap="round"/>
+    <path d="M42 87 H90" stroke="#2C3E62" stroke-width="2" stroke-linecap="round"/>
   </g>
-  <ellipse
-     cx="66"
-     cy="66"
-     rx="30"
-     ry="10"
-     fill="#38BDF8"
-     id="ellipse36" />
+  <ellipse cx="66" cy="66" rx="30" ry="10" fill="#38BDF8"/>
+
   <!-- Flèche de relais -->
-  <path
-     d="M106 81 H126"
-     stroke="#38BDF8"
-     stroke-width="4"
-     stroke-linecap="round"
-     id="path38" />
-  <path
-     d="M132 81 L116 72 L116 90 Z"
-     fill="#38BDF8"
-     id="path40" />
+  <path d="M106 81 H126" stroke="#38BDF8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M132 81 L116 72 L116 90 Z" fill="#38BDF8"/>
+
   <!-- Badge SSE (façade Server-Sent Events) -->
-  <rect
-     x="142"
-     y="63"
-     width="54"
-     height="36"
-     rx="18"
-     fill="#0E2940"
-     stroke="#38BDF8"
-     stroke-width="2"
-     id="rect42" />
-  <text
-     x="169"
-     y="88"
-     font-family="Verdana, Arial, sans-serif"
-     font-size="17"
-     font-weight="700"
-     fill="#38BDF8"
-     text-anchor="middle"
-     letter-spacing="1"
-     id="text44">SSE</text>
+  <rect x="142" y="63" width="54" height="36" rx="18" fill="#0E2940" stroke="#38BDF8" stroke-width="2"/>
+  <text x="169" y="88" font-family="Verdana, Arial, sans-serif" font-size="17" font-weight="700" fill="#38BDF8" text-anchor="middle" letter-spacing="1">SSE</text>
+
   <!-- État / IHM de suivi (coin supérieur droit) -->
-  <circle
-     cx="158"
-     cy="42"
-     r="8"
-     fill="#34D399"
-     id="circle46" />
-  <circle
-     cx="158"
-     cy="42"
-     r="3"
-     fill="#0B1220"
-     id="circle48" />
-  <!-- Wordmark -->
-  <text
-     x="220"
-     y="86"
-     font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif"
-     font-size="58"
-     font-weight="800"
-     letter-spacing="0.5"
-     id="text56"><tspan
-       fill="#E2E8F0"
-       id="tspan50">evt</tspan><tspan
-       fill="#94A3B8"
-       id="tspan52">2</tspan><tspan
-       fill="#38BDF8"
-       id="tspan54">sse</tspan></text>
+  <circle cx="158" cy="42" r="8" fill="#34D399"/>
+  <circle cx="158" cy="42" r="3" fill="#0B1220"/>
+
+  <!-- Wordmark (accent orange) -->
+  <text x="220" y="86" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="58" font-weight="800" letter-spacing="0.5">
+    <tspan fill="#F1F5F9">evt</tspan><tspan fill="#94A3B8">2</tspan><tspan fill="#F59E0B">sse</tspan>
+  </text>
+
   <!-- Sous-titre -->
-  <circle
-     cx="226"
-     cy="114"
-     r="4"
-     fill="#34D399"
-     id="circle58" />
-  <text
-     x="240"
-     y="120"
-     font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif"
-     font-size="18"
-     fill="#94A3B8"
-     letter-spacing="0.4"
-     id="text60">Relais de notifications PostgreSQL → SSE</text>
-  <text
-     x="240"
-     y="146"
-     font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif"
-     font-size="15"
-     fill="#64748B"
-     letter-spacing="0.4"
-     id="text62">IHM de suivi embarquée · client Go · chart Helm</text>
+  <circle cx="226" cy="114" r="4" fill="#34D399"/>
+  <text x="240" y="120" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="18" fill="#94A3B8" letter-spacing="0.4">Relais de notifications PostgreSQL → SSE</text>
+
+  <text x="240" y="146" font-family="'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif" font-size="15" fill="#71809A" letter-spacing="0.4">IHM de suivi embarquée · client Go · chart Helm</text>
 </svg>

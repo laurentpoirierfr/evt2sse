@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +27,8 @@ func WithAutoReconnect(enable bool) ListenOption {
 }
 
 // Stream reçoit les événements d'un flux SSE.
-// Il se reconnecte automatiquement (sauf désactivation via WithAutoReconnect).
+// Copie la résilience d'un EventSource : reconnexion automatique (backoff
+// exponentiel + jitter) et reprise via Last-Event-ID après coupure réseau.
 type Stream struct {
 	events chan Event
 	errs   chan error
@@ -36,6 +38,7 @@ type Stream struct {
 
 	client *Client
 	ctx    context.Context
+	lastID int64 // dernier id SSE reçu (utilisé pour la reprise)
 }
 
 // Listen ouvre un flux SSE vers /api/listen. La réception se fait sur
@@ -77,10 +80,16 @@ func (s *Stream) Close() {
 func (s *Stream) loop(cfg listenConfig) {
 	defer close(s.events)
 
+	attempt := 0
 	for {
-		err := s.runOnce()
+		delivered, err := s.runOnce()
 		if s.ctx.Err() != nil || s.stopped() {
 			return
+		}
+		if delivered {
+			attempt = 0
+		} else {
+			attempt++
 		}
 		if err != nil && err != io.EOF {
 			select {
@@ -92,12 +101,13 @@ func (s *Stream) loop(cfg listenConfig) {
 			return
 		}
 
+		delay := backoff(attempt-1, s.client.minRecon, s.client.maxRecon)
 		select {
 		case <-s.done:
 			return
 		case <-s.ctx.Done():
 			return
-		case <-time.After(s.client.reconnect):
+		case <-time.After(delay):
 		}
 	}
 }
@@ -112,30 +122,38 @@ func (s *Stream) stopped() bool {
 }
 
 // runOnce lit le flux jusqu'à sa fermeture ; io.EOF correspond à une
-// fermeture propre (reconnexion silencieuse).
-func (s *Stream) runOnce() error {
+// fermeture propre (reconnexion silencieuse). Elle renvoie true si au moins
+// un événement a été reçu.
+func (s *Stream) runOnce() (bool, error) {
 	req, err := http.NewRequestWithContext(s.ctx, http.MethodGet, s.client.baseURL+"/api/listen", nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	req.Header.Set("Accept", "text/event-stream")
+	if s.lastID > 0 {
+		req.Header.Set("Last-Event-ID", strconv.FormatInt(s.lastID, 10))
+	}
 
 	resp, err := s.client.http.Do(req)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		io.Copy(io.Discard, resp.Body)
-		return fmt.Errorf("listen: statut HTTP %d (%s)", resp.StatusCode, resp.Status)
+		return false, fmt.Errorf("listen: statut HTTP %d (%s)", resp.StatusCode, resp.Status)
 	}
 
 	br := bufio.NewReader(resp.Body)
+	delivered := false
 	for {
 		ev, err := readSSEEvent(br)
 		if err != nil {
-			return err
+			return delivered, err
+		}
+		if id, perr := strconv.ParseInt(ev.ID, 10, 64); perr == nil && id > s.lastID {
+			s.lastID = id
 		}
 		if ev.Type != "" && ev.Type != "message" {
 			continue
@@ -152,10 +170,11 @@ func (s *Stream) runOnce() error {
 
 		select {
 		case s.events <- Event{ID: d.ID, Channel: d.Channel, Payload: d.Payload, Time: t}:
+			delivered = true
 		case <-s.ctx.Done():
-			return s.ctx.Err()
+			return delivered, s.ctx.Err()
 		case <-s.done:
-			return io.EOF
+			return delivered, io.EOF
 		}
 	}
 }

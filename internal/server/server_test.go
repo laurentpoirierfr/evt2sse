@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/laurentpoirierfr/evt2sse/internal/relay"
@@ -61,5 +62,77 @@ func TestChannelsAPI(t *testing.T) {
 	}
 	if !reflect.DeepEqual(out.Channels, []string{}) {
 		t.Fatalf("canaux inattendus: %v", out.Channels)
+	}
+}
+
+func TestHistoryAndReplay(t *testing.T) {
+	srv := New(nil, "evt2sse")
+
+	for i := 1; i <= 3; i++ {
+		srv.broadcast(relay.Notify{Channel: "evt2sse", Payload: `{"i":` + string(rune('0'+i)) + `}`})
+	}
+
+	srv.mu.Lock()
+	got := srv.replayAfter(1)
+	contiguous := got.contiguous
+	count := len(got.frames)
+	from := got.from
+	srv.mu.Unlock()
+
+	if !contiguous {
+		t.Fatal("reprise contiguë attendue")
+	}
+	if count != 2 {
+		t.Fatalf("2 événements manqués attendus, got %d", count)
+	}
+	if from != 1 {
+		t.Fatalf("from=1 attendu, got %d", from)
+	}
+	joined := string(got.frames[0]) + string(got.frames[1])
+	if !strings.Contains(joined, `"id":2`) || !strings.Contains(joined, `"id":3`) {
+		t.Fatalf("rejeu incorrect: %q", joined)
+	}
+
+	// Trou dans l'historique => reprise non contiguë.
+	srv.mu.Lock()
+	srv.history = append([]historyEntry(nil), srv.history[len(srv.history)-1:]...)
+	got2 := srv.replayAfter(1)
+	srv.mu.Unlock()
+
+	if got2.contiguous {
+		t.Fatal("reprise non contiguë attendue après purge d'historique")
+	}
+}
+
+func TestHistoryBounded(t *testing.T) {
+	srv := New(nil, "evt2sse")
+	for i := 0; i < historyRetention+50; i++ {
+		srv.broadcast(relay.Notify{Channel: "evt2sse", Payload: "x"})
+	}
+	if len(srv.history) != historyRetention {
+		t.Fatalf("historique borné attendu (%d), got %d", historyRetention, len(srv.history))
+	}
+	first := srv.history[0].id
+	if first != int64(51) {
+		t.Fatalf("le plus ancien événement conservé doit être id 51, got %d", first)
+	}
+}
+
+func TestParseLastEventID(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int64
+	}{
+		{"", 0},
+		{"abc", 0},
+		{"-3", 0},
+		{"123", 123},
+		{"9999999999", 9999999999},
+		{"123extra", 0},
+	}
+	for _, c := range cases {
+		if got := parseLastEventID(c.in); got != c.want {
+			t.Fatalf("parseLastEventID(%q) = %d, want %d", c.in, got, c.want)
+		}
 	}
 }

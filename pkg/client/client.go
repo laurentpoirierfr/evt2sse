@@ -18,9 +18,12 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	mathrand "math/rand/v2"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,7 +53,10 @@ type Client struct {
 	baseURL   string
 	channel   string
 	http      *http.Client
-	reconnect time.Duration
+	sendRetry int
+	retryBase time.Duration
+	minRecon  time.Duration
+	maxRecon  time.Duration
 }
 
 // Option configure un Client.
@@ -59,6 +65,36 @@ type Option func(*Client)
 // WithHTTPClient remplace le client HTTP utilisé en interne.
 func WithHTTPClient(hc *http.Client) Option {
 	return func(c *Client) { c.http = hc }
+}
+
+// WithTimeout fixe le délai maximum d'une requête HTTP individuelle.
+func WithTimeout(d time.Duration) Option {
+	return func(c *Client) { c.http.Timeout = d }
+}
+
+// WithSendRetries définit le nombre de nouvelles tentatives d'envoi en cas
+// d'erreur transitoire. Chaque tentative réutilise le même id (idempotence) :
+// le serveur ne publiera l'événement qu'une seule fois.
+func WithSendRetries(n int) Option {
+	return func(c *Client) { c.sendRetry = n }
+}
+
+// WithReconnectMinDelay fixe le délai initial de reconnexion SSE (défaut 500 ms).
+func WithReconnectMinDelay(d time.Duration) Option {
+	return func(c *Client) {
+		if d > 0 {
+			c.minRecon = d
+		}
+	}
+}
+
+// WithReconnectMaxDelay borne le délai de reconnexion SSE (défaut 30 s).
+func WithReconnectMaxDelay(d time.Duration) Option {
+	return func(c *Client) {
+		if d > 0 {
+			c.maxRecon = d
+		}
+	}
 }
 
 // WithDefaultChannel définit le canal utilisé par Send quand aucun canal
@@ -73,7 +109,9 @@ func New(baseURL string, opts ...Option) *Client {
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		channel:   defaultChannel,
 		http:      &http.Client{Timeout: 30 * time.Second},
-		reconnect: 3 * time.Second,
+		retryBase: time.Second,
+		minRecon:  500 * time.Millisecond,
+		maxRecon:  30 * time.Second,
 	}
 	for _, o := range opts {
 		o(c)
@@ -84,6 +122,7 @@ func New(baseURL string, opts ...Option) *Client {
 type sendRequest struct {
 	Channel string `json:"channel,omitempty"`
 	Payload string `json:"payload"`
+	ID      string `json:"id,omitempty"`
 }
 
 type sendResponse struct {
@@ -95,11 +134,45 @@ type sendResponse struct {
 
 // Send publie une notification via POST /api/send. Le canal est transmis tel
 // quel (quelle que soit sa valeur, le serveur relaie sur son canal LISTEN).
+// Si des retries sont configurés (WithSendRetries), chaque nouvelle tentative
+// réutilise un id unique : le serveur déduplique, pas de doublon.
 func (c *Client) Send(ctx context.Context, channel, payload string) error {
+	return c.SendWithID(ctx, channel, payload, "")
+}
+
+// SendWithID publie une notification avec un id d'idempotence fourni par
+// l'appelant, pour garantir la reprise sans doublon sur réseau instable.
+func (c *Client) SendWithID(ctx context.Context, channel, payload, id string) error {
+	if id == "" && c.sendRetry > 0 {
+		id = newRequestID()
+	}
+	return c.sendTry(ctx, channel, payload, id)
+}
+
+// sendTry effectue l'envoi avec retries et backoff en cas d'erreur transitoire.
+func (c *Client) sendTry(ctx context.Context, channel, payload, id string) error {
 	if channel == "" {
 		channel = c.channel
 	}
-	body, err := json.Marshal(sendRequest{Channel: channel, Payload: payload})
+	var err error
+	for attempt := 0; ; attempt++ {
+		if err = c.sendOnce(ctx, channel, payload, id); err == nil {
+			return nil
+		}
+		if attempt >= c.sendRetry || ctx.Err() != nil {
+			return err
+		}
+		delay := backoff(attempt, c.retryBase, 10*time.Second)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+}
+
+func (c *Client) sendOnce(ctx context.Context, channel, payload, id string) error {
+	body, err := json.Marshal(sendRequest{Channel: channel, Payload: payload, ID: id})
 	if err != nil {
 		return err
 	}
@@ -242,4 +315,33 @@ func errText(code int, msg string) string {
 		return msg
 	}
 	return fmt.Sprintf("statut HTTP %d", code)
+}
+
+// backoff : 2^n multiplié par base, borné à max, jitter ±20 %.
+func backoff(attempt int, base, max time.Duration) time.Duration {
+	if attempt < 0 {
+		attempt = 0
+	}
+	d := base
+	for i := 0; i < attempt && d < max; i++ {
+		d *= 2
+	}
+	if d > max {
+		d = max
+	}
+	jitter := d / 5
+	out := d - jitter + time.Duration(mathrand.Int64N(int64(2*jitter)+1))
+	if out > max {
+		out = max
+	}
+	return out
+}
+
+// newRequestID génère un identifiant d'idempotence (128 bits aléatoires).
+func newRequestID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
 }

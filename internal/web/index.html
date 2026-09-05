@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>evt2sse — Console</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --border:#334155; --text:#e2e8f0; --accent:#38bdf8; --ok:#4ade80; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:var(--bg); color:var(--text); }
+  header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  h1 { font-size:18px; margin:0; }
+  .badge { font-size:12px; padding:3px 8px; border-radius:99px; border:1px solid var(--border); }
+  .ok { color:var(--ok); } .ko { color:#f87171; }
+  main { display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:16px 20px; }
+  @media (max-width:800px){ main{ grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .panel h2 { font-size:14px; margin:0 0 12px; text-transform:uppercase; letter-spacing:.05em; color:var(--accent); }
+  label { display:block; font-size:12px; margin:8px 0 4px; color:#94a3b8; }
+  input, textarea, select { width:100%; background:#0f172a; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:8px; font:inherit; }
+  textarea { min-height:80px; resize:vertical; }
+  button { margin-top:12px; background:var(--accent); color:#082f49; border:0; border-radius:6px; padding:10px 16px; font-weight:700; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.mini { margin:0; padding:0 6px; background:transparent; color:#f87171; font-weight:700; font-size:12px; }
+  .log { list-style:none; margin:0; padding:0; height:55vh; overflow-y:auto; background:#0f172a; border:1px solid var(--border); border-radius:8px; }
+  .log li { padding:10px 12px; border-bottom:1px solid var(--border); font-size:13px; word-break:break-word; }
+  .log .meta { color:#64748b; font-size:11px; }
+  .log .chan { color:var(--ok); }
+  .sendbox { display:flex; align-items:center; gap:8px; font-size:12px; color:#94a3b8; }
+  .statusline { display:flex; align-items:center; gap:8px; font-size:12px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#f87171; }
+  .dot.on { background:var(--ok); }
+  .chans { display:flex; flex-wrap:wrap; gap:8px; list-style:none; margin:0 0 12px; padding:0; }
+  .chans li { display:flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:99px; padding:4px 8px 4px 12px; font-size:12px; color:var(--ok); }
+  .addrow { display:flex; gap:8px; }
+  .addrow input { flex:1; }
+  .addrow button { margin-top:0; }
+  .full { grid-column:1 / -1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>evt2sse <span class="badge">console</span></h1>
+  <div class="statusline"><span class="dot" id="dot"></span><span id="status">connexion…</span></div>
+  <div class="badge" id="chanBadge">default: -</div>
+</header>
+<main>
+  <section class="panel full">
+    <h2>Canaux écoutés</h2>
+    <ul class="chans" id="chanList"><li style="color:#64748b; border-color:transparent">chargement…</li></ul>
+    <div class="addrow">
+      <input id="chanAdd" placeholder="nom du canal, ex. notif_jobs">
+      <button id="chanAddBtn">S'abonner</button>
+    </div>
+  </section>
+  <section class="panel">
+    <h2>Émettre un message</h2>
+    <label for="channel">Canal</label>
+    <input id="channel" placeholder="evt2sse" list="chanListSel">
+    <datalist id="chanListSel"></datalist>
+    <label for="payload">Payload</label>
+    <textarea id="payload" placeholder='{"bonjour":"monde"}'></textarea>
+    <button id="sendBtn">Envoyer (POST /api/send)</button>
+    <div class="sendbox" id="sendResult"></div>
+  </section>
+  <section class="panel">
+    <h2>Messages reçus</h2>
+    <div class="addrow">
+      <label for="filter" style="margin:0; line-height:36px; white-space:nowrap">Filtre</label>
+      <select id="filter"><option value="">tous les canaux</option></select>
+    </div>
+    <ul class="log" id="log"><li style="color:#64748b">En attente des notifications Postgres…</li></ul>
+  </section>
+</main>
+<script>
+const logEl = document.getElementById('log');
+const dot = document.getElementById('dot');
+const status = document.getElementById('status');
+const chanBadge = document.getElementById('chanBadge');
+const chanList = document.getElementById('chanList');
+const chanAdd = document.getElementById('chanAdd');
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---- canaux ---- */
+async function api(method, path, body) {
+  const opt = { method, headers: {'Content-Type':'application/json'} };
+  if (body !== undefined) opt.body = JSON.stringify(body);
+  const r = await fetch(path, opt);
+  let data = {};
+  try { data = await r.json(); } catch(_) {}
+  if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+}
+
+async function loadChannels() {
+  const data = await api('GET', '/api/channels');
+  chanBadge.textContent = 'default: ' + data.default;
+  const chans = data.channels || [];
+
+  chanList.innerHTML = chans.length ? '' : '<li style="color:#64748b; border-color:transparent">aucun canal</li>';
+  for (const ch of chans) {
+    const li = document.createElement('li');
+    li.appendChild(document.createTextNode(ch));
+    const btn = document.createElement('button');
+    btn.className = 'mini';
+    btn.textContent = '✕';
+    btn.title = 'Se désabonner de ' + ch;
+    btn.onclick = () => unsubscribe(ch);
+    li.appendChild(btn);
+    chanList.appendChild(li);
+  }
+
+  document.getElementById('chanListSel').innerHTML =
+    chans.map(ch => '<option value="' + escapeHtml(ch) + '"></option>').join('');
+
+  const sel = document.getElementById('filter');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">tous les canaux</option>' +
+    chans.map(ch => '<option value="' + escapeHtml(ch) + '">' + escapeHtml(ch) + '</option>').join('');
+  sel.value = prev;
+  applyFilter();
+}
+
+async function subscribe(ch) {
+  ch = ch.trim();
+  if (!ch) return;
+  await api('POST', '/api/channels', {channel: ch});
+  document.getElementById('channel').value = ch;
+  await loadChannels();
+}
+
+async function unsubscribe(ch) {
+  await api('DELETE', '/api/channels/' + encodeURIComponent(ch));
+  await loadChannels();
+}
+
+document.getElementById('chanAddBtn').addEventListener('click', () => {
+  subscribe(chanAdd.value).then(() => { chanAdd.value = ''; })
+    .catch(err => alert('Erreur: ' + err.message));
+});
+
+/* ---- affichage des événements ---- */
+function applyFilter() {
+  const f = document.getElementById('filter').value;
+  document.querySelectorAll('#log li').forEach(li => {
+    li.style.display = (!f || li.dataset.chan === f) ? '' : 'none';
+  });
+}
+document.getElementById('filter').addEventListener('change', applyFilter);
+
+function addLog(id, channel, payload, time) {
+  const li = document.createElement('li');
+  li.dataset.chan = channel || '';
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  meta.textContent = '#' + id + ' · ' + (time || new Date().toISOString());
+  const body = document.createElement('div');
+  body.innerHTML = '<span class="chan">[' + escapeHtml(channel) + ']</span> ' + escapeHtml(payload);
+  li.appendChild(meta);
+  li.appendChild(body);
+  logEl.appendChild(li);
+  applyFilter();
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+const es = new EventSource('/api/listen');
+es.onopen = () => { dot.classList.add('on'); status.textContent = 'connecté'; };
+es.onerror = () => { dot.classList.remove('on'); status.textContent = 'déconnecté — reconnexion…'; };
+es.addEventListener('ready', e => {
+  try { const d = JSON.parse(e.data); if (d.channel) chanBadge.textContent = 'default: ' + d.channel; } catch(_) {}
+});
+es.onmessage = e => {
+  try {
+    const d = JSON.parse(e.data);
+    addLog(d.id, d.channel, d.payload, d.time);
+  } catch(_) { addLog('-', '-', e.data, ''); }
+};
+
+/* ---- envoi ---- */
+document.getElementById('sendBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('sendBtn');
+  const channel = document.getElementById('channel').value.trim() || 'evt2sse';
+  const payload = document.getElementById('payload').value;
+  btn.disabled = true;
+  const resEl = document.getElementById('sendResult');
+  try {
+    const r = await fetch('/api/send', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({channel, payload})
+    });
+    const data = await r.json();
+    resEl.textContent = r.ok ? '✓ envoyé sur ' + data.channel : '✗ ' + (data.error || 'erreur');
+  } catch(err) {
+    resEl.textContent = '✗ ' + err.message;
+  }
+  btn.disabled = false;
+});
+
+/* ---- statut / init ---- */
+setInterval(() => {
+  fetch('/api/status').then(r=>r.json()).then(d => {
+    dot.classList.toggle('on', d.connected);
+    status.textContent = d.connected
+      ? 'connecté · ' + d.clients + ' client(s) · ' + (d.channels || []).length + ' canal(aux)'
+      : 'db hors ligne';
+  }).catch(()=>{});
+}, 5000);
+
+loadChannels().catch(err => {
+  chanList.innerHTML = '<li style="color:#f87171; border-color:transparent">' + escapeHtml(err.message) + '</li>';
+});
+</script>
+</body>
+</html>
